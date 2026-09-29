@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  payment-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: payment-service
+    restart: unless-stopped
+    ports:
+      - "${PORT:-4004}:4004"
+    environment:
+      PORT: 4004
+      NODE_ENV: production
+      MONGODB_URI: mongodb://mongo:27017/payment_service?replicaSet=rs0
+      JWT_SECRET: ${JWT_SECRET:-changeme}
+      ORDER_SERVICE_URL: ${ORDER_SERVICE_URL:-http://order-service:4003}
+      PLATFORM_SERVICE_URL: ${PLATFORM_SERVICE_URL:-http://platform-service:4002}
+      AUTH_SERVICE_URL: ${AUTH_SERVICE_URL:-http://auth-service:4001}
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      - payment-network
+
+  mongo:
+    image: mongo:7.0
+    container_name: payment-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    command: ["--replSet", "rs0", "--bind_ip_all"]
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: |
+        mongosh --eval 'try { rs.status().ok } catch(e) { rs.initiate({_id: "rs0", members: [{_id: 0, host: "mongo:27017"}]}).ok }'
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+    networks:
+      - payment-network
+
+volumes:
+  mongo_data:
+
+networks:
+  payment-network:
+    driver: bridge
